@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BG Graph by Hour</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@1.1.0"></script>
+</head>
+<body>
+    <canvas id="bgChart" width="600" height="300"></canvas>
+
+    <script>
+        let chart;
+        const usedColors = new Set();  // Track colors to avoid duplicates
+
+        const ctx = document.getElementById('bgChart').getContext('2d');
+
+        chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                datasets: []
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'BG Patterns by Hour of Day'
+                    },
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: function() {
+                                return '';  // Removes float title
+                            },
+                            label: function(context) {
+                                const point = context.raw;
+                                const bg = point.y;
+                                const hourFloat = point.x;
+                                const date = point.customDate || context.dataset.label;
+
+                                // Convert float hour to HH:MM format
+                                const totalMinutes = Math.round(hourFloat * 60);
+                                const hours = Math.floor(totalMinutes / 60);
+                                const minutes = totalMinutes % 60;
+
+                                const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+
+                                return `Date: ${date}, Time: ${timeStr}, BG: ${bg}`;
+                            }
+                        }
+                    },
+                    annotation: {
+                        annotations: {}  // Initialize as empty; will be set dynamically
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'linear',
+                        min: 0,
+                        max: 24,
+                        title: { display: true, text: 'Hour of Day' },
+                        ticks: {
+                            stepSize: 2  // keeps 0, 2, 4...24 on X-axis
+                        }
+                    },
+                    y: {
+                        title: { display: true, text: 'BG Value' }
+                    }
+                }
+            }
+        });
+
+        window.addEventListener('message', (event) => {
+            console.log('Received data from Wix:', event.data);
+
+            const receivedData = event.data;
+            const lowBG = receivedData.lowBG;
+            const highBG = receivedData.highBG;
+
+            if (!receivedData || !receivedData.datasets) {
+                console.log('No datasets received.');
+                return;
+            }
+
+            // Reset used colors for each new dataset batch
+            usedColors.clear();
+
+            const coloredDatasets = receivedData.datasets.map(ds => {
+                const color = getUniqueColor();
+                return {
+                    ...ds,
+                    borderColor: color,
+                    backgroundColor: color,
+                    tension: 0.2,
+                    pointRadius: 4,
+                    fill: false,
+                    spanGaps: false,
+                    showLine: false
+                };
+            });
+
+            // Set the datasets
+            chart.data.datasets = coloredDatasets;
+
+            // Add annotation lines if values are provided
+            if (lowBG && highBG) {
+                chart.options.plugins.annotation.annotations = {
+                    lowLine: {
+                        type: 'line',
+                        yMin: lowBG,
+                        yMax: lowBG,
+                        borderColor: 'red',
+                        borderWidth: 2,
+                        label: {
+                            content: 'Low BG',
+                            enabled: true,
+                            position: 'start'
+                        }
+                    },
+                    highLine: {
+                        type: 'line',
+                        yMin: highBG,
+                        yMax: highBG,
+                        borderColor: 'red',
+                        borderWidth: 2,
+                        label: {
+                            content: 'High BG',
+                            enabled: true,
+                            position: 'start'
+                        }
+                    }
+                };
+                console.log('Annotation lines added.');
+            } else {
+                console.log('No annotation lines added (missing lowBG/highBG).');
+                // Optionally clear existing annotations
+                chart.options.plugins.annotation.annotations = {};
+            }
+
+            chart.update();
+            console.log('Chart updated with new data and annotations.');
+        });
+
+        function getUniqueColor() {
+            let color;
+            do {
+                const r = Math.floor(Math.random() * 200);
+                const g = Math.floor(Math.random() * 200);
+                const b = Math.floor(Math.random() * 200);
+                color = `rgb(${r}, ${g}, ${b})`;
+            } while (usedColors.has(color));
+            usedColors.add(color);
+            return color;
+        }
+    </script>
+</body>
+</html>
